@@ -1,0 +1,83 @@
+---
+title: "Permissions"
+description: "The exact, complete read-only permission set 0Labs can exercise."
+---
+
+The permission list below is **authoritative** — it's reproduced verbatim from the onboarding
+module's `main.tf`. It is the **complete, exact** set of read-only permissions the 0Labs scanner
+role grants. There are **zero write/mutate verbs**. A security team can diff this directly against
+the running custom role.
+
+## The keyless, broker-based model
+
+0Labs never holds keys. The scanner service account lives in **your** project; the only trust you
+grant is `roles/iam.serviceAccountTokenCreator` for 0Labs' published broker principal on that
+scanner SA — i.e. permission to mint a short-lived token **as** the read-only scanner SA, nothing
+else.
+
+**Broker principal (stable, publishable):**
+
+```
+serviceAccount:detections-agent@detections-0labs.iam.gserviceaccount.com
+```
+
+Customers grant token-creator to this principal once; 0Labs' per-environment workers reach your
+scanner by delegating through it. Revoke anytime by removing that single binding.
+
+## Read permissions (all scopes)
+
+These apply to every connector — organization or project scope.
+
+| Permission | Group | Why | Read-only |
+|---|---|---|---|
+| `resourcemanager.projects.get` | Resource hierarchy | Read the scanned project itself. | Read |
+| `cloudasset.assets.listResource` | Cloud Asset Inventory | Primary read API for config across the estate (connector test). | Read |
+| `cloudasset.assets.searchAllResources` | Cloud Asset Inventory | Search resource config across the estate. | Read |
+| `cloudasset.assets.searchAllIamPolicies` | Cloud Asset Inventory | Search IAM policies across the estate. | Read |
+| `cloudasset.assets.listIamPolicy` | Cloud Asset Inventory | List IAM policies via Asset Inventory. | Read |
+| `storage.buckets.get` | Cloud Storage posture | Read bucket config (public-bucket / PAP checks). | Read |
+| `storage.buckets.list` | Cloud Storage posture | Enumerate buckets to scan. | Read |
+| `storage.buckets.getIamPolicy` | Cloud Storage posture | Read bucket IAM (public-access checks). | Read |
+| `iam.roles.get` | IAM posture | Read a role definition. | Read |
+| `iam.roles.list` | IAM posture | Enumerate roles. | Read |
+| `iam.serviceAccounts.get` | IAM posture | Read a service account. | Read |
+| `iam.serviceAccounts.list` | IAM posture | Enumerate service accounts. | Read |
+| `iam.serviceAccounts.getIamPolicy` | IAM posture | Read primitive roles on SAs. | Read |
+| `iam.serviceAccountKeys.get` | IAM posture | Read a service-account key's metadata. | Read |
+| `iam.serviceAccountKeys.list` | IAM posture | Find USER_MANAGED keys (a high-signal finding). | Read |
+| `resourcemanager.projects.getIamPolicy` | IAM posture | Read the project IAM policy. | Read |
+| `compute.firewalls.get` | Network posture | Read a firewall rule (open-firewall checks). | Read |
+| `compute.firewalls.list` | Network posture | Enumerate firewall rules. | Read |
+| `compute.networks.get` | Network posture | Read a network. | Read |
+| `compute.networks.list` | Network posture | Enumerate networks. | Read |
+| `logging.logEntries.list` | Cloud Logging | Read log entries (connector test + audit-config visibility). | Read |
+| `logging.logs.list` | Cloud Logging | Enumerate logs. | Read |
+| `logging.logServiceIndexes.list` | Cloud Logging | List log service indexes. | Read |
+
+## Organization-scope extras
+
+When you onboard at **organization** scope, the role additionally includes resource-hierarchy
+enumeration so 0Labs can discover all current **and future** projects to scan. These are added
+**only** for org scope — GCP rejects folder/org-level permissions inside a project-level custom role.
+
+| Permission | Group | Why | Read-only |
+|---|---|---|---|
+| `resourcemanager.projects.list` | Resource hierarchy (org) | Enumerate projects in the org. | Read |
+| `resourcemanager.folders.get` | Resource hierarchy (org) | Read a folder. | Read |
+| `resourcemanager.folders.list` | Resource hierarchy (org) | Enumerate folders. | Read |
+| `resourcemanager.organizations.get` | Resource hierarchy (org) | Read the organization node. | Read |
+
+## The standalone security-reviewer reference
+
+If a security reviewer wants the canonical source rather than this table, the list is curated and
+least-privilege in the module itself:
+
+- **File:** `main.tf` in
+  [`terraform-google-zerolabs-connector`](https://github.com/0Labs-AI/terraform-google-zerolabs-connector)
+- **Locals:** `read_permissions` (all scopes) and `org_only_permissions` (org scope only)
+- **Custom role title:** `0Labs Detections Read-Only Scanner`
+
+<Note>
+  The custom role description states it plainly: *"Read-only config/IAM access for 0Labs posture
+  scanning. No write permissions."*
+</Note>

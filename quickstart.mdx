@@ -1,0 +1,70 @@
+---
+title: "Quickstart"
+description: "Connect 0Labs and get your first findings in about 15 minutes."
+---
+
+This is the one happy path: connect read-only GCP, connect your IaC repo, and watch your first
+findings land in Posture. The whole thing runs hands-off after setup — a daily scan is scheduled
+automatically.
+
+<Steps>
+  <Step title="Sign in to the app">
+    Open [app.0labs.ai](https://app.0labs.ai) and sign in. You'll land on the Posture dashboard
+    (empty until your first scan).
+  </Step>
+
+  <Step title="Connect GCP (read-only)">
+    Apply the onboarding Terraform module in your GCP org or project. It creates a least-privilege,
+    read-only scanner service account that 0Labs impersonates keyless — no keys are ever created or
+    shared.
+
+    ```hcl
+    module "zerolabs_onboard" {
+      source = "github.com/0Labs-AI/terraform-google-zerolabs-connector//?ref=v0.1.0"
+
+      scope      = "organization"      # or "project"
+      org_id     = "123456789012"      # required for org scope
+      project_id = "your-host-project" # where the scanner SA lives
+    }
+
+    output "connector_config" { value = module.zerolabs_onboard.connector_config }
+    ```
+
+    Run `terraform apply`. Full prerequisites and a Cloud Shell one-liner are in
+    [Connect GCP](/connect-gcp).
+  </Step>
+
+  <Step title="Register the connector">
+    In the app, go to **Settings → Cloud connectors → Connect GCP** and paste the
+    `connector_config` output. 0Labs runs a read-only connectivity test — impersonation, Cloud Asset
+    Inventory, and Cloud Logging must all pass. **Nothing is scanned until that test passes and you
+    confirm.**
+
+    Saving the connector automatically creates a daily scan schedule — no other setup.
+  </Step>
+
+  <Step title="Connect your remediation repo">
+    Go to **Settings → Remediation repositories → Connect GitHub repo**. You're sent to GitHub's
+    native repo picker to install the 0Labs Detections App on the repo(s) you want fixes to land in,
+    then returned to the app. See [Connect GitHub](/connect-github).
+  </Step>
+
+  <Step title="Watch your first findings land">
+    A daily scan starts automatically. Your first findings appear in **Posture** within about
+    15 minutes. For each misconfiguration the agent confirms, it opens a fix PR in your connected
+    repo for you to review.
+
+    <Note>
+      Want results immediately instead of waiting for the daily cron? An admin can trigger the first
+      scan on demand — see [Connect GCP → Verify](/connect-gcp#verify-the-connection).
+    </Note>
+  </Step>
+</Steps>
+
+## What success looks like
+
+- A `cloud_posture` finding appears in your triage inbox, with provenance pointing at the exact
+  resource.
+- A bot-authored pull request lands in your connected repo with the import + fix and a green
+  `terraform plan` check.
+- **Merge ≠ apply** — merging the PR is your decision; your CI plans and your pipeline applies.

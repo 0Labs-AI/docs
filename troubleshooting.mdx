@@ -1,0 +1,104 @@
+---
+title: "Troubleshooting"
+description: "Common onboarding symptoms and their fixes."
+---
+
+Keyed by symptom. Most onboarding friction is one of the four below.
+
+## Error 400: domain-restricted sharing
+
+<Warning>
+  **Symptom** — `terraform apply` fails with:
+
+  ```
+  Error 400: One or more users named in the policy do not belong to a permitted customer
+  ```
+</Warning>
+
+**Cause.** Your org enforces the `constraints/iam.allowedPolicyMemberDomains` org policy ("domain
+restricted sharing"), which blocks granting IAM to identities outside your own domain — including
+the 0Labs broker principal.
+
+**Fix (Terraform).** Allow 0Labs' Google Workspace customer id (`C0257jo7q`) alongside your own in
+that policy. Scope it as narrowly as you like — e.g. only on the host project where the scanner SA
+lives:
+
+```hcl
+resource "google_project_organization_policy" "allow_zerolabs" {
+  project    = "your-host-project"
+  constraint = "constraints/iam.allowedPolicyMemberDomains"
+  list_policy {
+    allow {
+      values = ["your-own-customer-id", "C0257jo7q"] # your id from `gcloud organizations list`
+    }
+  }
+}
+```
+
+**Fix (console).** IAM & Admin → Organization Policies → **Domain restricted sharing** → add
+`C0257jo7q`.
+
+This grants 0Labs nothing by itself — it only permits the single token-creator binding the module
+creates.
+
+## Impersonation denied
+
+**Symptom.** The connectivity test's `impersonation` check fails, or
+`gcloud auth print-access-token --impersonate-service-account=…` errors.
+
+**Causes & fixes.**
+
+- **IAM propagation.** Bindings can take ~2 minutes to take effect. Wait and retry.
+- **Domain-restricted sharing.** If the token-creator binding never landed, see the Error 400
+  section above.
+- **Wrong principal.** Confirm the trust binding grants
+  `serviceAccount:detections-agent@detections-0labs.iam.gserviceaccount.com` (the stable broker) —
+  not an env-suffixed SA.
+
+You can sanity-check the chain before touching the app:
+
+```bash
+gcloud auth print-access-token \
+  --impersonate-service-account="zerolabs-scanner@<your-project>.iam.gserviceaccount.com" \
+  >/dev/null && echo CHAIN OK
+```
+
+## No findings after 30 minutes
+
+**Symptom.** The connector saved and the test passed, but Posture is still empty.
+
+**Causes & fixes.**
+
+- **Scan hasn't run yet.** The first scan runs on the daily schedule. Trigger it on demand (admin
+  token):
+
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    "https://api.0labs.ai/admin/posture-review?connector_id=<id>"
+  ```
+
+- **Nothing to find.** If your estate is clean, there's nothing to surface. To prove the loop end to
+  end, drop a deliberate test misconfig first:
+
+  ```bash
+  gsutil mb gs://<project>-onboard-test
+  gsutil pap set unspecified gs://<project>-onboard-test
+  ```
+
+- **Asset Inventory empty.** Confirm Cloud Asset Inventory is enabled and the `asset_inventory`
+  check passed in the connectivity test (see [Connect GCP](/connect-gcp#verify-the-connection)).
+
+## Wrong or legacy module source
+
+**Symptom.** Terraform can't resolve the module, or you pulled an older path.
+
+**Fix.** Use this exact source string, pinned to a release tag:
+
+```hcl
+source = "github.com/0Labs-AI/terraform-google-zerolabs-connector//?ref=v0.1.0"
+```
+
+<Note>
+  Older internal references pointed the module at a path inside the platform monorepo. The
+  published, supported module is the standalone `terraform-google-zerolabs-connector` repo above.
+</Note>
