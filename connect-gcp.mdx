@@ -1,0 +1,158 @@
+---
+title: "Connect GCP"
+description: "Grant 0Labs read-only, keyless access to your GCP estate."
+---
+
+0Labs scans your GCP via a **read-only, least-privilege scanner service account** that lives in
+**your** project. 0Labs impersonates it **keyless** — no service-account keys are ever created or
+shared, and you revoke access anytime by removing a single IAM binding.
+
+The full, exact permission set is in [Permissions](/permissions). There are **zero write/mutate
+verbs**.
+
+## Prerequisites
+
+Enable these APIs in the project where the scanner SA will live (and across the org for org scope):
+
+- **Cloud Asset Inventory** (`cloudasset.googleapis.com`) — the primary config + IAM read API
+- **IAM** (`iam.googleapis.com`)
+- **Cloud Logging** (`logging.googleapis.com`)
+- **Cloud Resource Manager** (`cloudresourcemanager.googleapis.com`)
+
+You also need permission to create a custom role + service account and bind IAM (Owner, or the
+relevant IAM admin roles) in the target org/project.
+
+## Install
+
+<Tabs>
+  <Tab title="Cloud Shell (recommended)">
+    The fastest path: run the connect script in Cloud Shell, which has `gcloud` and `terraform`
+    preinstalled and is already authenticated as you.
+
+    ```bash
+    curl -fsSL https://app.0labs.ai/connect.sh | bash
+    ```
+
+    The script prompts for scope (organization or project) and your org/project id, applies the
+    module, and prints the `connector_config` to paste into the app.
+
+    <Note>
+      You can also use **Open in Cloud Shell** from **Settings → Cloud connectors** in the app,
+      which opens Cloud Shell with the command pre-filled.
+    </Note>
+  </Tab>
+
+  <Tab title="Terraform">
+    Add the module to your own Terraform. This is the same module the script runs — pin it to a
+    release tag.
+
+    <CodeGroup>
+    ```hcl Organization scope (recommended)
+    module "zerolabs_onboard" {
+      source = "github.com/0Labs-AI/terraform-google-zerolabs-connector//?ref=v0.1.0"
+
+      scope      = "organization"      # all current + future projects
+      org_id     = "123456789012"      # required for org scope
+      project_id = "your-host-project" # where the scanner SA lives
+    }
+
+    output "connector_config" { value = module.zerolabs_onboard.connector_config }
+    ```
+
+    ```hcl Project scope
+    module "zerolabs_onboard" {
+      source = "github.com/0Labs-AI/terraform-google-zerolabs-connector//?ref=v0.1.0"
+
+      scope      = "project"
+      project_id = "your-project-id"
+    }
+
+    output "connector_config" { value = module.zerolabs_onboard.connector_config }
+    ```
+    </CodeGroup>
+
+    Then:
+
+    ```bash
+    terraform init
+    terraform apply
+    ```
+
+    The default `platform_principal` is 0Labs' stable broker identity
+    (`serviceAccount:detections-agent@detections-0labs.iam.gserviceaccount.com`). Leave it as-is
+    unless 0Labs tells you otherwise.
+  </Tab>
+
+  <Tab title="Manual (gcloud)">
+    Prefer not to use Terraform? Create the equivalent read-only role, scanner SA, and the single
+    token-creator trust binding by hand. (Terraform is recommended — it keeps the grant reviewable
+    and revocable as one unit.)
+
+    ```bash
+    PROJECT=your-project-id
+    BROKER=detections-agent@detections-0labs.iam.gserviceaccount.com
+
+    # 1. Read-only custom role (project scope shown; see Permissions for the exact list).
+    gcloud iam roles create zeroLabsDetectionsScanner \
+      --project="$PROJECT" \
+      --title="0Labs Detections Read-Only Scanner" \
+      --permissions="$(paste-the-exact-list-from-/permissions)"
+
+    # 2. Scanner service account (lives in YOUR project; its keys never leave).
+    gcloud iam service-accounts create zerolabs-scanner \
+      --project="$PROJECT" \
+      --display-name="0Labs Detections scanner (read-only)"
+
+    SCANNER="zerolabs-scanner@$PROJECT.iam.gserviceaccount.com"
+
+    # 3. Bind the read-only role to the scanner SA.
+    gcloud projects add-iam-policy-binding "$PROJECT" \
+      --member="serviceAccount:$SCANNER" \
+      --role="projects/$PROJECT/roles/zeroLabsDetectionsScanner"
+
+    # 4. The ONE trust binding: let 0Labs mint short-lived tokens AS the scanner SA.
+    gcloud iam service-accounts add-iam-policy-binding "$SCANNER" \
+      --member="serviceAccount:$BROKER" \
+      --role="roles/iam.serviceAccountTokenCreator"
+    ```
+
+    <Warning>
+      Copy the permission list **exactly** from [Permissions](/permissions). For organization scope
+      you must also add the `org_only_permissions` and create the role at org level — GCP rejects
+      folder/org-level permissions inside a project-level custom role.
+    </Warning>
+  </Tab>
+</Tabs>
+
+## Register the connector
+
+After `apply`, copy the `connector_config` output (a JSON blob) and paste it into the app:
+
+**Settings → Cloud connectors → Connect GCP**
+
+0Labs runs a read-only connectivity test before saving. **Nothing is scanned until it passes and you
+confirm.** Saving the connector automatically creates the daily scan schedule.
+
+## Verify the connection
+
+The connectivity test returns a per-check result. Three checks **must** pass; one is best-effort.
+
+| Check | Required | What it proves |
+|---|---|---|
+| `impersonation` | Yes | The keyless token-creator binding works — 0Labs can mint a short-lived token as your scanner SA. |
+| `asset_inventory` | Yes | Cloud Asset Inventory is reachable — the primary config + IAM read API. |
+| `logging` | Yes | Cloud Logging read works — connectivity + audit-config visibility. |
+| `scc` | Best-effort | Security Command Center, if you run SCC Standard/Premium. **OK to fail** — it does not block activation. |
+
+To get results immediately instead of waiting for the daily cron, an admin can trigger the first
+scan on demand:
+
+```bash
+curl -X POST -H "Authorization: Bearer $TOKEN" \
+  "https://api.0labs.ai/admin/posture-review?connector_id=<id>"
+```
+
+<Note>
+  If `impersonation` fails, it's almost always IAM propagation (wait ~2 minutes) or a
+  domain-restricted-sharing org policy. See [Troubleshooting](/troubleshooting).
+</Note>

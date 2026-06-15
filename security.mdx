@@ -1,0 +1,72 @@
+---
+title: "Security & trust"
+description: "Keyless access, read-only scanning, PR-only mutation, and metadata-only egress."
+---
+
+This page states the security model plainly. No marketing gloss — these are the boundaries the
+system actually enforces.
+
+## The trust headline
+
+<CardGroup cols={2}>
+  <Card title="Read-only scanning" icon="eye">
+    Zero write verbs in the granted role. The exact permission set is published and reviewable — see
+    [Permissions](/permissions).
+  </Card>
+  <Card title="PR-only mutation" icon="code-pull-request">
+    The **only** mutation 0Labs ever makes is a GitHub pull request. **Merge ≠ apply** — your CI
+    plans, your pipeline applies.
+  </Card>
+  <Card title="Keyless" icon="key">
+    No credentials are ever stored. 0Labs uses short-lived impersonation you revoke by removing one
+    IAM binding.
+  </Card>
+  <Card title="Metadata-only egress" icon="shield">
+    We read config via read-only APIs. **No disk snapshots, no object or database contents** ever
+    leave your environment.
+  </Card>
+</CardGroup>
+
+## Keyless access, no stored credentials
+
+The scanner service account lives in **your** GCP project. 0Labs is granted only
+`roles/iam.serviceAccountTokenCreator` on it — the right to mint a short-lived (~1 hour) token **as**
+the read-only scanner SA, delegated through a stable published broker principal
+(`serviceAccount:detections-agent@detections-0labs.iam.gserviceaccount.com`). No service-account
+keys are ever created or shared. You revoke access instantly by removing that one binding.
+
+On the GitHub side, the only thing stored is the App **installation id**. Tokens are minted per
+operation with a ~1-hour TTL. Uninstall the App to revoke — instant, no 0Labs involvement.
+
+## Read-only, with PR-only mutation
+
+- The GCP scanner role contains **no write or mutate verbs**. It cannot change your environment.
+- The **only** change 0Labs ever makes anywhere is opening a **GitHub pull request** in a repo you
+  connected.
+- **Merge ≠ apply.** 0Labs opens the PR; your CI plans it; your pipeline applies it on merge. 0Labs
+  never applies infrastructure.
+
+## Metadata-only egress
+
+0Labs reads resource **configuration and IAM** via read-only control-plane APIs (primarily Cloud
+Asset Inventory, plus targeted IAM/Storage/firewall/logging reads). It does **not**:
+
+- take disk snapshots,
+- read object/blob contents in your buckets,
+- read database contents.
+
+Raw config is processed into normalized findings; only a bounded, structured finding — not raw
+config dumps — is ever sent to an LLM.
+
+## LLM usage
+
+0Labs uses:
+
+> Claude via the Anthropic API; your data is not used to train models; standard API retention.
+
+## Subprocessors
+
+| Subprocessor | Used for |
+|---|---|
+| Anthropic | LLM inference (Claude via the Anthropic API). |
+| Google Cloud | Platform hosting and infrastructure. |

@@ -1,0 +1,64 @@
+---
+title: "Connect GitHub"
+description: "Install the 0Labs Detections GitHub App so fixes land as PRs in your repo."
+---
+
+Fixes land as **pull requests in your own Infrastructure-as-Code repository**. To enable that, you
+install the **0Labs Detections** GitHub App on the repos you want fixes to land in. The only thing
+0Labs stores is the installation id — tokens are minted per operation with a ~1-hour TTL.
+
+## Connect a repo
+
+The flow originates in the app so we can tie the install to your tenant.
+
+<Steps>
+  <Step title="Start in the app">
+    Go to **Settings → Remediation repositories → Connect GitHub repo**.
+  </Step>
+  <Step title="Pick repos on GitHub">
+    You're sent to GitHub's native install screen for the 0Labs Detections App. Choose the
+    account/org and select the specific repositories you want fixes to land in.
+  </Step>
+  <Step title="You're returned to the app">
+    GitHub redirects you back and the connection completes. The repo shows **Connected**, and
+    posture fixes for your tenant now route as PRs into that repo.
+  </Step>
+</Steps>
+
+## Tier-1 vs Tier-2
+
+<CardGroup cols={2}>
+  <Card title="Tier-1 — your repo, edit in place" icon="code-pull-request">
+    When a misconfigured resource is already defined in your connected IaC repo, the agent edits the
+    existing code in place and opens the fix PR **into your repo**. This is the default and the
+    preferred path.
+  </Card>
+  <Card title="Tier-2 — managed fallback" icon="box-archive">
+    When a resource isn't yet codified in your repo, the agent import-bootstraps it into a
+    0Labs-managed remediation repo (adopting the live resource into IaC and correcting it) as a
+    fallback, so coverage isn't blocked on full IaC adoption.
+  </Card>
+</CardGroup>
+
+## Permissions (least privilege)
+
+The App requests only what it needs to open a PR:
+
+| Permission | Access | Why |
+|---|---|---|
+| Contents | Write | Create a branch and commit the fix. |
+| Pull requests | Write | Open the fix PR. |
+| Metadata | Read | Mandatory baseline (repo metadata). |
+
+No Actions, no admin, no organization permissions.
+
+<Note>
+  **Merge ≠ apply.** We open the PR; your CI plans; your pipeline applies on merge. 0Labs never
+  applies infrastructure changes.
+</Note>
+
+## Revoke anytime
+
+Uninstall the App from your GitHub settings (**Settings → Applications → Installed GitHub Apps**).
+It's instant and requires no involvement from 0Labs — tokens stop minting the moment the
+installation is removed.
