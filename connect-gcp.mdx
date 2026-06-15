@@ -93,22 +93,22 @@ relevant IAM admin roles) in the target org/project.
     BROKER=detections-agent@detections-0labs.iam.gserviceaccount.com
 
     # 1. Read-only custom role (project scope shown; see Permissions for the exact list).
-    gcloud iam roles create zeroLabsDetectionsScanner \
+    gcloud iam roles create agent0Scanner \
       --project="$PROJECT" \
-      --title="0Labs Detections Read-Only Scanner" \
+      --title="Agent0 Read-Only Scanner" \
       --permissions="$(paste-the-exact-list-from-/permissions)"
 
     # 2. Scanner service account (lives in YOUR project; its keys never leave).
     gcloud iam service-accounts create zerolabs-scanner \
       --project="$PROJECT" \
-      --display-name="0Labs Detections scanner (read-only)"
+      --display-name="Agent0 scanner (read-only)"
 
     SCANNER="zerolabs-scanner@$PROJECT.iam.gserviceaccount.com"
 
     # 3. Bind the read-only role to the scanner SA.
     gcloud projects add-iam-policy-binding "$PROJECT" \
       --member="serviceAccount:$SCANNER" \
-      --role="projects/$PROJECT/roles/zeroLabsDetectionsScanner"
+      --role="projects/$PROJECT/roles/agent0Scanner"
 
     # 4. The ONE trust binding: let 0Labs mint short-lived tokens AS the scanner SA.
     gcloud iam service-accounts add-iam-policy-binding "$SCANNER" \
